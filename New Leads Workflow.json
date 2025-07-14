@@ -14,6 +14,19 @@
     },
     {
       "parameters": {
+        "jsCode": "// Convert queries array to individual items\nconst queries = $json.queries || [];\nreturn queries.map(query => ({ json: { query } }));"
+      },
+      "id": "convert-queries-to-items",
+      "name": "Convert queries to items",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1320,
+        120
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
         "options": {}
       },
       "id": "0ecf2998-592a-47f0-b5e7-b8d1911c78fc",
@@ -256,7 +269,6 @@
           "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MDMbYUDqNWtNqZIaGO1YR2ojX3Vqfuo-ZXlt9XwpQps/edit?usp=drivesdk"
         },
         "sheetName": {
-          "__rl": true,
           "value": "gid=0",
           "mode": "list",
           "cachedResultName": "Sheet1",
@@ -301,6 +313,33 @@
       }
     },
     {
+      "parameters": {
+        "url": "http://localhost:5000/webhook/new-emails",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-webhook-auth",
+              "value": "701e490a6b8d6f5d851a3de0a154bbf06177af79c17732ccc1af077275103152"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"new_emails\",\n  \"emails\": [{\n    \"email\": \"{{ $json.emails }}\",\n    \"query\": \"{{ $('Starts scraper workflow').item.json.query }}\",\n    \"sourceUrl\": \"{{ $('Request web page for URL').item.json.url }}\",\n    \"timestamp\": \"{{ $now }}\"\n  }]\n}",
+        "options": {}
+      },
+      "id": "send-new-emails-webhook",
+      "name": "Send New Emails to UI",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        3520,
+        320
+      ],
+      "typeVersion": 4.2
+    },
+    {
       "parameters": {},
       "id": "e8d05bfb-3075-45f0-af02-8dbb211a1890",
       "name": "Starts scraper workflow",
@@ -312,15 +351,28 @@
       "typeVersion": 1
     },
     {
-      "parameters": {},
-      "id": "371fd4ae-6dd9-4899-bae9-fbb40297e56f",
-      "name": "Run workflow",
-      "type": "n8n-nodes-base.manualTrigger",
+      "parameters": {
+        "authentication": "headerAuth",
+        "path": "start-scraping",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-start-scraping",
+      "name": "Start Scraping Webhook",
+      "type": "n8n-nodes-base.webhook",
       "position": [
         1200,
         120
       ],
-      "typeVersion": 1
+      "typeVersion": 1.1,
+      "webhookId": "start-scraping-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "webhook-auth-credential",
+          "name": "Webhook Authentication"
+        }
+      }
     },
     {
       "parameters": {
@@ -356,6 +408,33 @@
         220
       ],
       "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/webhook/status-update",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-webhook-auth",
+              "value": "701e490a6b8d6f5d851a3de0a154bbf06177af79c17732ccc1af077275103152"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"status_update\",\n  \"query\": \"{{ $json.query }}\",\n  \"processedQueries\": {{ $runIndex + 1 }},\n  \"totalQueries\": {{ $('Loop over queries').item.json.length }}\n}",
+        "options": {}
+      },
+      "id": "status-update-webhook",
+      "name": "Send Status Update",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1840,
+        220
+      ],
+      "typeVersion": 4.2
     },
     {
       "parameters": {
@@ -482,75 +561,28 @@
     }
   ],
   "pinData": {
-    "Run workflow": [
+    "Start Scraping Webhook": [
       {
         "json": {
-          "query": "sugar+house+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "downtown+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "millcreek+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "university+district+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "west+valley+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "murray+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "rose+park+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "holladay+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "south+salt+lake+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "glendale+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "avenues+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "east+bountiful+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "taylorsville+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "kearns+utah+real+estate+agent"
+          "queries": [
+            "sugar+house+real+estate+agent",
+            "downtown+salt+lake+city+real+estate+agent",
+            "millcreek+real+estate+agent",
+            "university+district+salt+lake+city+real+estate+agent",
+            "west+valley+city+real+estate+agent",
+            "murray+utah+real+estate+agent",
+            "rose+park+salt+lake+city+real+estate+agent",
+            "holladay+utah+real+estate+agent",
+            "south+salt+lake+real+estate+agent",
+            "glendale+salt+lake+city+real+estate+agent",
+            "avenues+salt+lake+city+real+estate+agent",
+            "east+bountiful+real+estate+agent",
+            "taylorsville+utah+real+estate+agent",
+            "kearns+utah+real+estate+agent"
+          ],
+          "businessType": "real estate agent",
+          "maxResults": 100,
+          "waitTime": 2
         }
       }
     ],
@@ -563,7 +595,18 @@
     ]
   },
   "connections": {
-    "Run workflow": {
+    "Start Scraping Webhook": {
+      "main": [
+        [
+          {
+            "node": "Convert queries to items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert queries to items": {
       "main": [
         [
           {
@@ -699,6 +742,17 @@
         ]
       ]
     },
+    "Save emails to Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Send New Emails to UI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Request web page for URL": {
       "main": [
         [
@@ -722,6 +776,17 @@
       ]
     },
     "Execute scraper for query": {
+      "main": [
+        [
+          {
+            "node": "Send Status Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Status Update": {
       "main": [
         [
           {
