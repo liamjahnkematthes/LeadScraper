@@ -1,0 +1,6 @@
+Row #,Name,Address,Emails,Phones,PDL Status
+1,"GRONA, BROOKE","4137 RANCH RD 1376, FREDERICKSBURG, TX 78624",No email found,No phone found,No match
+2,"MADISON, BRENDA GAIL","20 WATERS EDGE, MONTGOMERY, TX 77356",No email found,No phone found,"Error: {""status"":404,""error"":{""type"":""not_found"",""message"":""No records were found matching your request""}}"
+3,GN FREDERICKSBURG LP,"16607 BLANCO RD STE 1505, SAN ANTONIO, TX 78232",No email found,No phone found,"Error: {""status"":404,""error"":{""type"":""not_found"",""message"":""No records were found matching your request""}}"
+4,"GUITAR, MITZI","4160 CENTER POINT RD, FREDERICKSBURG, TX 78624",No email found,No phone found,No match
+5,"HILL, SCOTT A & STEPHANIE","97 WELL SPRINGS DR, KERRVILLE, TX 78028-2389",No email found,No phone found,"Error: {""status"":404,""error"":{""type"":""not_found"",""message"":""No records were found matching your request""}}"

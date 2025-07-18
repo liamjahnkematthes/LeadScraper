@@ -1,43 +1,86 @@
 {
-  "name": "New Leads Workflow",
+  "name": "Anderson County Property Scraper",
   "nodes": [
     {
-      "parameters": {},
-      "id": "3ecc220a-6a05-44ba-bab6-23675215da73",
-      "name": "Remove Duplicate URLs",
-      "type": "n8n-nodes-base.removeDuplicates",
-      "position": [
-        1740,
-        600
-      ],
-      "typeVersion": 1.1
-    },
-    {
       "parameters": {
+        "authentication": "headerAuth",
+        "path": "start-property-scraping",
+        "httpMethod": "POST",
+        "responseMode": "onReceived",
         "options": {}
       },
-      "id": "0ecf2998-592a-47f0-b5e7-b8d1911c78fc",
-      "name": "Loop over queries",
-      "type": "n8n-nodes-base.splitInBatches",
+      "id": "webhook-start-scraping",
+      "name": "Start Property Scraping Webhook",
+      "type": "n8n-nodes-base.webhook",
       "position": [
-        1440,
-        120
+        200,
+        300
       ],
-      "typeVersion": 3
+      "typeVersion": 1.1,
+      "webhookId": "start-property-scraping-webhook",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "webhook-auth-credential",
+          "name": "Webhook Authentication"
+        }
+      }
     },
     {
       "parameters": {
-        "url": "=https://www.google.com/maps/search/{{ $json.query }}",
+        "jsCode": "// Convert search parameters to property search queries\nconst input = $input.first().json;\nconsole.log('Input data:', JSON.stringify(input, null, 2));\nconst minAcres = input.body.minAcres || 50;\nconst maxAcres = input.body.maxAcres || 10000;\nconst propertyTypes = input.body.propertyTypes || ['D1', 'E1']; // Ag land types\n\nconst searchParams = {\n  minAcres,\n  maxAcres,\n  propertyTypes\n};\n\nconsole.log('Property search params:', searchParams);\nreturn [{ json: searchParams }];"
+      },
+      "id": "convert-search-params",
+      "name": "Convert Search Parameters",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        400,
+        300
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "url": "https://www.taxnetusa.com/texas/anderson/",
+        "sendBody": true,
+        "bodyContentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "land_area_acres_low",
+              "value": "={{ $json.minAcres }}"
+            },
+            {
+              "name": "land_area_acres_high", 
+              "value": "={{ $json.maxAcres }}"
+            },
+            {
+              "name": "land_state_code[]",
+              "value": "D1"
+            },
+            {
+              "name": "land_state_code[]",
+              "value": "E1"
+            },
+            {
+              "name": "data_to_search",
+              "value": "2024"
+            },
+            {
+              "name": "property_type",
+              "value": "real"
+            }
+          ]
+        },
         "options": {
           "allowUnauthorizedCerts": false
         }
       },
-      "id": "97bedb78-a96f-4d58-96fc-6a1bab9c757e",
-      "name": "Search Google Maps with query",
+      "id": "search-anderson-county",
+      "name": "Search Anderson County Properties",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1140,
-        600
+        600,
+        300
       ],
       "executeOnce": false,
       "typeVersion": 4.2,
@@ -45,14 +88,14 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json.data\n\nconst regex = /https?:\\/\\/[^\\/]+/g\n\nconst urls = data.match(regex)\n\nreturn urls.map(url => ({json: {url: url}}))"
+        "jsCode": "const data = $input.first().json.data;\n\n// Extract property data from HTML response\nconst propertyRegex = /<tr[^>]*>.*?<td[^>]*>([^<]+)<\\/td>.*?<td[^>]*>([^<]+)<\\/td>.*?<td[^>]*>([^<]+)<\\/td>.*?<\\/tr>/gs;\n\nconst properties = [];\nlet match;\n\nwhile ((match = propertyRegex.exec(data)) !== null) {\n  const ownerName = match[1]?.trim();\n  const propertyAddress = match[2]?.trim();\n  const acreage = match[3]?.trim();\n  \n  if (ownerName && propertyAddress && acreage) {\n    properties.push({\n      json: {\n        ownerName,\n        propertyAddress, \n        acreage: parseFloat(acreage) || 0,\n        source: 'Anderson County Tax Records',\n        timestamp: new Date().toISOString()\n      }\n    });\n  }\n}\n\nconsole.log(`Found ${properties.length} properties`);\nreturn properties.length > 0 ? properties : [{ json: { error: 'No properties found' } }];"
       },
-      "id": "c137cc25-d2a8-4f55-b7ea-a2fa496f0fda",
-      "name": "Scrape URLs from results",
+      "id": "extract-property-data",
+      "name": "Extract Property Data",
       "type": "n8n-nodes-base.code",
       "position": [
-        1340,
-        600
+        800,
+        300
       ],
       "typeVersion": 2
     },
@@ -70,180 +113,57 @@
             {
               "id": "041797f2-2fe2-41dc-902a-d34050b9b304",
               "operator": {
-                "type": "string",
-                "operation": "notRegex"
+                "type": "number",
+                "operation": "gte"
               },
-              "leftValue": "={{ $json.url }}",
-              "rightValue": "=(google|gstatic|ggpht|schema\\.org|example\\.com|sentry-next\\.wixpress\\.com|imli\\.com|sentry\\.wixpress\\.com|ingest\\.sentry\\.io)"
+              "leftValue": "={{ $json.acreage }}",
+              "rightValue": 50
             },
             {
               "id": "eb499a7e-17bc-453c-be08-a47286f726dd",
               "operator": {
-                "name": "filter.operator.equals",
                 "type": "string",
-                "operation": "equals"
+                "operation": "isNotEmpty"
               },
-              "leftValue": "",
+              "leftValue": "={{ $json.ownerName }}",
               "rightValue": ""
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "6c3d5848-b965-4bd2-80c2-274241e73fef",
-      "name": "Filter irrelevant URLs",
-      "type": "n8n-nodes-base.filter",
-      "position": [
-        1540,
-        600
-      ],
-      "typeVersion": 2.2
-    },
-    {
-      "parameters": {
-        "url": "={{ $json.url }}",
-        "options": {}
-      },
-      "id": "72fbc854-c8a2-4665-b9c0-68b389017e20",
-      "name": "Request web page for URL",
-      "type": "n8n-nodes-base.httpRequest",
-      "position": [
-        2140,
-        680
-      ],
-      "typeVersion": 4.2,
-      "alwaysOutputData": false,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "options": {
-          "reset": false
-        }
-      },
-      "id": "cc37df45-41d9-49ad-a0b3-4761dd18261f",
-      "name": "Loop over URLs",
-      "type": "n8n-nodes-base.splitInBatches",
-      "position": [
-        1940,
-        600
-      ],
-      "typeVersion": 3,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "id": "c9385da2-0b7d-4b0f-b54a-b2fb61892fba",
-      "name": "Loop over pages",
-      "type": "n8n-nodes-base.splitInBatches",
-      "position": [
-        2160,
-        340
-      ],
-      "typeVersion": 3,
-      "alwaysOutputData": false,
-      "onError": "continueErrorOutput"
-    },
-    {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const data = $json.data\n\nconst emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.(?!png|jpg|gif|jpeg)[a-zA-Z]{2,}/g\n\nconst emails = data.match(emailRegex)\n\nreturn {json: {emails: emails}}"
-      },
-      "id": "214e34ea-03d5-447a-aad6-86fc066d441a",
-      "name": "Scrape emails from page",
-      "type": "n8n-nodes-base.code",
-      "position": [
-        2320,
-        440
-      ],
-      "typeVersion": 2,
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "fieldsToAggregate": {
-          "fieldToAggregate": [
+            },
             {
-              "fieldToAggregate": "emails"
-            }
-          ]
-        },
-        "options": {
-          "mergeLists": true
-        }
-      },
-      "id": "55aad79d-b1e6-4652-8ca1-66dca7036adf",
-      "name": "Aggregate arrays of emails",
-      "type": "n8n-nodes-base.aggregate",
-      "position": [
-        2480,
-        320
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "fieldToSplitOut": "emails",
-        "options": {}
-      },
-      "id": "f74428be-62f2-4885-ac9c-12584904259c",
-      "name": "Split out into default data structure",
-      "type": "n8n-nodes-base.splitOut",
-      "position": [
-        2700,
-        320
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "compare": "selectedFields",
-        "fieldsToCompare": "emails",
-        "options": {}
-      },
-      "id": "d7ab446d-f84a-45ae-b614-4980828403af",
-      "name": "Remove duplicate emails",
-      "type": "n8n-nodes-base.removeDuplicates",
-      "position": [
-        2920,
-        320
-      ],
-      "typeVersion": 1.1
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "version": 2,
-            "leftValue": "",
-            "caseSensitive": true,
-            "typeValidation": "strict"
-          },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "041797f2-2fe2-41dc-902a-d34050b9b304",
+              "id": "filter-government",
               "operator": {
                 "type": "string",
                 "operation": "notRegex"
               },
-              "leftValue": "={{ $json.emails }}",
-              "rightValue": "=(google|gstatic|ggpht|schema\\.org|example\\.com|sentry\\.wixpress\\.com|sentry-next\\.wixpress\\.com|ingest\\.sentry\\.io|sentry\\.io|imli\\.com)"
+              "leftValue": "={{ $json.ownerName.toLowerCase() }}",
+              "rightValue": "(city|county|state|government|public|school|church)"
             }
           ]
         },
         "options": {}
       },
-      "id": "79849c45-4e80-4c0b-a0ad-d7609d9c59b6",
-      "name": "Filter irrelevant emails",
+      "id": "filter-properties",
+      "name": "Filter 50+ Acre Properties",
       "type": "n8n-nodes-base.filter",
       "position": [
-        3120,
-        320
+        1000,
+        300
       ],
       "typeVersion": 2.2
+    },
+    {
+      "parameters": {
+        "compare": "selectedFields",
+        "fieldsToCompare": "ownerName,propertyAddress",
+        "options": {}
+      },
+      "id": "remove-duplicates",
+      "name": "Remove Duplicate Properties",
+      "type": "n8n-nodes-base.removeDuplicates",
+      "position": [
+        1200,
+        300
+      ],
+      "typeVersion": 1.1
     },
     {
       "parameters": {
@@ -252,11 +172,10 @@
           "__rl": true,
           "value": "1MDMbYUDqNWtNqZIaGO1YR2ojX3Vqfuo-ZXlt9XwpQps",
           "mode": "list",
-          "cachedResultName": "Roofing",
+          "cachedResultName": "Anderson County Properties",
           "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1MDMbYUDqNWtNqZIaGO1YR2ojX3Vqfuo-ZXlt9XwpQps/edit?usp=drivesdk"
         },
         "sheetName": {
-          "__rl": true,
           "value": "gid=0",
           "mode": "list",
           "cachedResultName": "Sheet1",
@@ -265,13 +184,57 @@
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "Emails": "={{ $json.emails }}"
+            "Owner Name": "={{ $json.ownerName }}",
+            "Property Address": "={{ $json.propertyAddress }}",
+            "Acreage": "={{ $json.acreage }}",
+            "Source": "={{ $json.source }}",
+            "Timestamp": "={{ $json.timestamp }}"
           },
           "matchingColumns": [],
           "schema": [
             {
-              "id": "Emails",
-              "displayName": "Emails",
+              "id": "Owner Name",
+              "displayName": "Owner Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Property Address", 
+              "displayName": "Property Address",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Acreage",
+              "displayName": "Acreage", 
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Source",
+              "displayName": "Source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string", 
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
               "required": false,
               "defaultMatch": false,
               "display": true,
@@ -285,12 +248,12 @@
         },
         "options": {}
       },
-      "id": "f5b30c8c-0135-43f6-a3ea-8843007a1e06",
-      "name": "Save emails to Google Sheet",
+      "id": "save-to-google-sheets",
+      "name": "Save Properties to Google Sheets",
       "type": "n8n-nodes-base.googleSheets",
       "position": [
-        3320,
-        320
+        1400,
+        300
       ],
       "typeVersion": 4.5,
       "credentials": {
@@ -301,464 +264,137 @@
       }
     },
     {
-      "parameters": {},
-      "id": "e8d05bfb-3075-45f0-af02-8dbb211a1890",
-      "name": "Starts scraper workflow",
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "position": [
-        920,
-        600
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {},
-      "id": "371fd4ae-6dd9-4899-bae9-fbb40297e56f",
-      "name": "Run workflow",
-      "type": "n8n-nodes-base.manualTrigger",
-      "position": [
-        1200,
-        120
-      ],
-      "typeVersion": 1
-    },
-    {
       "parameters": {
-        "amount": 2
-      },
-      "id": "a82a42fa-b673-4339-baee-46f634074616",
-      "name": "Wait between executions",
-      "type": "n8n-nodes-base.wait",
-      "position": [
-        1880,
-        260
-      ],
-      "webhookId": "40eb11a9-0f7d-4932-993e-0052b69dbf9b",
-      "typeVersion": 1.1
-    },
-    {
-      "parameters": {
-        "workflowId": {
-          "__rl": true,
-          "mode": "id",
-          "value": "={{ $workflow.id }}"
+        "url": "https://625cfa757c69.ngrok-free.app/webhook/new-properties",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-webhook-auth",
+              "value": "701e490a6b8d6f5d851a3de0a154bbf06177af79c17732ccc1af077275103152"
+            }
+          ]
         },
-        "mode": "each",
-        "options": {
-          "waitForSubWorkflow": false
-        }
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"new_property\",\n  \"property\": {\n    \"ownerName\": \"{{ $json.ownerName }}\",\n    \"propertyAddress\": \"{{ $json.propertyAddress }}\", \n    \"acreage\": {{ $json.acreage }},\n    \"source\": \"{{ $json.source }}\",\n    \"timestamp\": \"{{ $json.timestamp }}\"\n  }\n}",
+        "options": {}
       },
-      "id": "fc61cb23-05f2-442c-b02b-bbee5bcd861a",
-      "name": "Execute scraper for query",
-      "type": "n8n-nodes-base.executeWorkflow",
+      "id": "send-property-to-ui",
+      "name": "Send Property Data to UI",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1640,
-        220
+        1600,
+        300
       ],
-      "typeVersion": 1.1
+      "typeVersion": 4.2
     },
     {
       "parameters": {
-        "content": "## 🛠 Setup\n1. Setup your list of queries in the \"Run workflow\" manual trigger node. Watch  this [video](https://youtu.be/HaiO-UeiKBA) on how to generate the queries with ChatGPT.\n3. Choose a sheet to populate with data in the **Google Sheets node**\n4. Run the workflow and start getting leads into your Google Sheets document",
-        "height": 180,
-        "width": 740,
-        "color": 5
+        "url": "https://625cfa757c69.ngrok-free.app/webhook/status-update",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-n8n-webhook-auth",
+              "value": "701e490a6b8d6f5d851a3de0a154bbf06177af79c17732ccc1af077275103152"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"status_update\",\n  \"message\": \"Property scraping completed for Anderson County\",\n  \"totalProperties\": {{ $json.length || 0 }},\n  \"timestamp\": \"{{ $now }}\"\n}",
+        "options": {}
       },
-      "id": "b6adbbd5-1606-420a-9d65-689f516bc4f0",
-      "name": "Sticky Note",
-      "type": "n8n-nodes-base.stickyNote",
+      "id": "send-status-update",
+      "name": "Send Status Update",
+      "type": "n8n-nodes-base.httpRequest",
       "position": [
-        240,
-        80
+        1400,
+        500
       ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "**Optional** 👇\nSet wait time between each query workflow execution. Default is 2 seconds.",
-        "height": 100,
-        "color": 6
-      },
-      "id": "b563266d-12be-4a04-826e-d4fc44cbe481",
-      "name": "Sticky Note2",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1820,
-        100
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "### Scraper 👇\nThis workflow will be executed in the background for each query. Click the **All executions** tab in the left sidebar to see the executions running.",
-        "height": 100,
-        "width": 480
-      },
-      "id": "4aa201c0-9550-4521-8bef-3728be628e60",
-      "name": "Sticky Note3",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        920,
-        480
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "👆 \n1. Setup your **credentials**. Here's a [video tutorial](https://youtu.be/O5RnWDM27M8) on how to do that.\n\n2. Choose which document and sheet to save the scraped emails to. ",
-        "height": 180,
-        "color": 4
-      },
-      "id": "900b9b5b-8b69-4541-a940-316ff97dd6b8",
-      "name": "Sticky Note4",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        3340,
-        520
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": " ## ⚠️ Note\n\nA [video tutorial](https://youtu.be/HaiO-UeiKBA) for this workflow guide is available on my [Youtube channel](https://www.youtube.com/channel/UCn8xmUBunez1SsDVRfZDUGA)",
-        "color": 3
-      },
-      "id": "2160841a-0451-4b62-a2a6-e884e65c5dc1",
-      "name": "Sticky Note5",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        760,
-        -140
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "## Google Maps Automatic Email Scraper\n\nThis workflow automatically scrapes emails from businesses on Google Maps based on a list of queries that you provide.",
-        "height": 140,
-        "width": 480,
-        "color": 7
-      },
-      "id": "0684c471-ae2e-4f38-b122-60b82f2f8b10",
-      "name": "Sticky Note6",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        240,
-        -140
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "**Optional** 👆\nAdd or change the regex for filtering irrelevant URLs.",
-        "height": 100,
-        "width": 160,
-        "color": 6
-      },
-      "id": "d8b6a757-b76e-4927-845b-31644ee4acae",
-      "name": "Sticky Note7",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        1520,
-        760
-      ],
-      "typeVersion": 1
-    },
-    {
-      "parameters": {
-        "content": "**Optional** 👆\nAdd or change the regex for filtering irrelevant/incorrect email addresses.",
-        "height": 100,
-        "width": 200,
-        "color": 6
-      },
-      "id": "bfd7d45c-b71d-4ddb-8a24-aa9889ac1da4",
-      "name": "Sticky Note8",
-      "type": "n8n-nodes-base.stickyNote",
-      "position": [
-        3100,
-        480
-      ],
-      "typeVersion": 1
+      "typeVersion": 4.2
     }
   ],
-  "pinData": {
-    "Run workflow": [
-      {
-        "json": {
-          "query": "sugar+house+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "downtown+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "millcreek+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "university+district+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "west+valley+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "murray+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "rose+park+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "holladay+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "south+salt+lake+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "glendale+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "avenues+salt+lake+city+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "east+bountiful+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "taylorsville+utah+real+estate+agent"
-        }
-      },
-      {
-        "json": {
-          "query": "kearns+utah+real+estate+agent"
-        }
-      }
-    ],
-    "Starts scraper workflow": [
-      {
-        "json": {
-          "query": "east+bountiful+roofing"
-        }
-      }
-    ]
-  },
   "connections": {
-    "Run workflow": {
+    "Start Property Scraping Webhook": {
       "main": [
         [
           {
-            "node": "Loop over queries",
+            "node": "Convert Search Parameters",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Loop over URLs": {
+    "Convert Search Parameters": {
       "main": [
         [
           {
-            "node": "Loop over pages",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Request web page for URL",
+            "node": "Search Anderson County Properties",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Loop over pages": {
+    "Search Anderson County Properties": {
       "main": [
         [
           {
-            "node": "Aggregate arrays of emails",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Scrape emails from page",
+            "node": "Extract Property Data",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Loop over queries": {
+    "Extract Property Data": {
       "main": [
-        [],
         [
           {
-            "node": "Execute scraper for query",
+            "node": "Filter 50+ Acre Properties",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Remove Duplicate URLs": {
+    "Filter 50+ Acre Properties": {
       "main": [
         [
           {
-            "node": "Loop over URLs",
+            "node": "Remove Duplicate Properties",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Filter irrelevant URLs": {
+    "Remove Duplicate Properties": {
       "main": [
         [
           {
-            "node": "Remove Duplicate URLs",
+            "node": "Save Properties to Google Sheets",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Status Update",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Remove duplicate emails": {
+    "Save Properties to Google Sheets": {
       "main": [
         [
           {
-            "node": "Filter irrelevant emails",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Scrape emails from page": {
-      "main": [
-        [
-          {
-            "node": "Loop over pages",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Starts scraper workflow": {
-      "main": [
-        [
-          {
-            "node": "Search Google Maps with query",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Wait between executions": {
-      "main": [
-        [
-          {
-            "node": "Loop over queries",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Filter irrelevant emails": {
-      "main": [
-        [
-          {
-            "node": "Save emails to Google Sheet",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Request web page for URL": {
-      "main": [
-        [
-          {
-            "node": "Loop over URLs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Scrape URLs from results": {
-      "main": [
-        [
-          {
-            "node": "Filter irrelevant URLs",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Execute scraper for query": {
-      "main": [
-        [
-          {
-            "node": "Wait between executions",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Aggregate arrays of emails": {
-      "main": [
-        [
-          {
-            "node": "Split out into default data structure",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Search Google Maps with query": {
-      "main": [
-        [
-          {
-            "node": "Scrape URLs from results",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Split out into default data structure": {
-      "main": [
-        [
-          {
-            "node": "Remove duplicate emails",
+            "node": "Send Property Data to UI",
             "type": "main",
             "index": 0
           }
